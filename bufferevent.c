@@ -599,7 +599,7 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 				      bufev_private->read_watermarks_cb,
 				      EVBUFFER_CB_ENABLED|EVBUFFER_CB_NODEFER);
 
-			if (evbuffer_get_length(bufev->input) > highmark)
+			if (evbuffer_get_length(bufev->input) >= highmark)
 				bufferevent_wm_suspend_read(bufev);
 			else if (evbuffer_get_length(bufev->input) < highmark)
 				bufferevent_wm_unsuspend_read(bufev);
@@ -615,25 +615,30 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 	BEV_UNLOCK(bufev);
 }
 
-void
+int
 bufferevent_getwatermark(struct bufferevent *bufev, short events,
     size_t *lowmark, size_t *highmark)
 {
-	BEV_LOCK(bufev);
 	if (events == EV_WRITE) {
+		BEV_LOCK(bufev);
 		if (lowmark)
 			*lowmark = bufev->wm_write.low;
 		if (highmark)
 			*highmark = bufev->wm_write.high;
+		BEV_UNLOCK(bufev);
+		return 0;
 	}
 
 	if (events == EV_READ) {
+		BEV_LOCK(bufev);
 		if (lowmark)
 			*lowmark = bufev->wm_read.low;
 		if (highmark)
 			*highmark = bufev->wm_read.high;
+		BEV_UNLOCK(bufev);
+		return 0;
 	}
-	BEV_UNLOCK(bufev);
+	return -1;
 }
 
 int
@@ -772,7 +777,7 @@ bufferevent_finalize_cb_(struct event_callback *evcb, void *arg_)
 }
 
 int
-bufferevent_decref_(struct bufferevent *bufev)
+bufferevent_decref(struct bufferevent *bufev)
 {
 	BEV_LOCK(bufev);
 	return bufferevent_decref_and_unlock_(bufev);
@@ -788,11 +793,15 @@ bufferevent_free(struct bufferevent *bufev)
 }
 
 void
-bufferevent_incref_(struct bufferevent *bufev)
+bufferevent_incref(struct bufferevent *bufev)
 {
 	struct bufferevent_private *bufev_private =
 	    EVUTIL_UPCAST(bufev, struct bufferevent_private, bev);
 
+	/* XXX: now that this function is public, we might want to
+	 * - return the count from this function
+	 * - create a new function to atomically grab the current refcount
+	 */
 	BEV_LOCK(bufev);
 	++bufev_private->refcnt;
 	BEV_UNLOCK(bufev);

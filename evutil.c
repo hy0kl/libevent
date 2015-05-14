@@ -257,6 +257,9 @@ evutil_ersatz_socketpair_(int family, int type, int protocol,
 	connector = socket(AF_INET, type, 0);
 	if (connector < 0)
 		goto tidy_up_and_fail;
+
+	memset(&connect_addr, 0, sizeof(connect_addr));
+
 	/* We want to find out the port number to connect to.  */
 	size = sizeof(connect_addr);
 	if (getsockname(listener, (struct sockaddr *) &connect_addr, &size) == -1)
@@ -361,6 +364,20 @@ evutil_make_listen_socket_reuseable(evutil_socket_t sock)
 	 * listener is closed."  On Windows, though, it means "don't keep other
 	 * processes from binding to this address while we're using it. */
 	return setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*) &one,
+	    (ev_socklen_t)sizeof(one));
+#else
+	return 0;
+#endif
+}
+
+int
+evutil_make_listen_socket_reuseable_port(evutil_socket_t sock)
+{
+#if defined __linux__ && defined(SO_REUSEPORT)
+	int one = 1;
+	/* REUSEPORT on Linux 3.9+ means, "Multiple servers (processes or
+	 * threads) can bind to the same port if they each set the option. */
+	return setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (void*) &one,
 	    (ev_socklen_t)sizeof(one));
 #else
 	return 0;
@@ -652,7 +669,7 @@ evutil_check_ifaddrs(void)
 	   "GetAdaptersInfo", but that's deprecated; let's just try
 	   GetAdaptersAddresses and fall back to connect+getsockname.
 	*/
-	HANDLE lib = evutil_load_windows_system_library_(TEXT("ihplapi.dll"));
+	HMODULE lib = evutil_load_windows_system_library_(TEXT("ihplapi.dll"));
 	GetAdaptersAddresses_fn_t fn;
 	ULONG size, res;
 	IP_ADAPTER_ADDRESSES *addresses = NULL, *address;
@@ -2453,7 +2470,7 @@ evutil_hex_char_to_int_(char c)
 }
 
 #ifdef _WIN32
-HANDLE
+HMODULE
 evutil_load_windows_system_library_(const TCHAR *library_name)
 {
   TCHAR path[MAX_PATH];

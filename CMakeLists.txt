@@ -1,13 +1,14 @@
 #
 # Libevent CMake project
 #
-# Based on initial work by: 
+# Based on initial work by:
 #    Alexey Ozeritsky
 #
 # Additional changes:
 #   Brodie Thiesfield
-#   Joakim Soderberg 
+#   Joakim Soderberg
 #   Trond Norbye
+#   Sergei Nikulov
 #
 #   Build example:
 #
@@ -26,13 +27,13 @@ project(libevent C)
 
 set(EVENT_VERSION_MAJOR 2)
 set(EVENT_VERSION_MINOR 1)
-set(EVENT_VERSION_PATCH 4)
-set(EVENT_NUMERIC_VERSION 0x02010401)
-set(EVENT_VERSION_DEVTAG "-dev")
+set(EVENT_VERSION_PATCH 5)
+set(EVENT_NUMERIC_VERSION 0x02010500)
+set(EVENT_VERSION_DEVTAG "-beta")
 
 set(EVENT_ABI_MAJOR 2)
 set(EVENT_ABI_MINOR 1)
-set(EVENT_ABI_PATCH 4)
+set(EVENT_ABI_PATCH 5)
 set(EVENT_ABI_LIBVERSION "${EVENT_ABI_MAJOR}.${EVENT_ABI_MINOR}.${EVENT_ABI_PATCH}")
 
 set(EVENT_VERSION "${EVENT_VERSION_MAJOR}.${EVENT_VERSION_MINOR}.${EVENT_VERSION_PATCH}-alpha${EVENT_VERSION_DEVTAG}")
@@ -47,12 +48,13 @@ option(EVENT__DISABLE_OPENSSL "Define if libevent should build without support f
 option(EVENT__DISABLE_BENCHMARK "Defines if libevent should build without the benchmark exectuables" OFF)
 option(EVENT__DISABLE_TESTS "If tests should be compiled or not" OFF)
 option(EVENT__DISABLE_REGRESS "Disable the regress tests" OFF)
+option(EVENT__DISABLE_SAMPLES "Disable sample files" OFF)
 option(EVENT__FORCE_KQUEUE_CHECK "When crosscompiling forces running a test program that verifies that Kqueue works with pipes. Note that this requires you to manually run the test program on the the cross compilation target to verify that it works. See cmake documentation for try_run for more details" OFF)
 option(EVENT__COVERAGE "Enable running gcov to get a test coverage report (only works with GCC/CLang). Make sure to enable -DCMAKE_BUILD_TYPE=Debug as well." OFF)
 # TODO: Add --disable-largefile     omit support for large files
 
 # Put the libaries and binaries that get built into directories at the
-# top of the build tree rather than in hard-to-find leaf directories. 
+# top of the build tree rather than in hard-to-find leaf directories.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
@@ -85,7 +87,7 @@ if (EVENT__COVERAGE)
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         message(FATAL_ERROR "Code coverage results with an optimised (non-Debug) build may be misleading! Add -DCMAKE_BUILD_TYPE=Debug")
     endif()
-    
+
     message("Setting coverage compiler flags")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0 -fprofile-arcs -ftest-coverage")
 endif()
@@ -270,19 +272,19 @@ CHECK_FUNCTION_EXISTS_EX(unsetenv EVENT__HAVE_UNSETENV)
 CHECK_FUNCTION_EXISTS_EX(gethostbyname_r EVENT__HAVE_GETHOSTBYNAME_R)
 
 if(EVENT__HAVE_GETHOSTBYNAME_R)
-    CHECK_PROTOTYPE_DEFINITION(gethostbyname_r 
+    CHECK_PROTOTYPE_DEFINITION(gethostbyname_r
         "int gethostbyname_r(const char *name, struct hostent *hp, struct hostent_data *hdata)"
         "0"
         "netdb.h"
         EVENT__HAVE_GETHOSTBYNAME_R_3_ARG)
 
-    CHECK_PROTOTYPE_DEFINITION(gethostbyname_r 
+    CHECK_PROTOTYPE_DEFINITION(gethostbyname_r
         "struct hostent *gethostbyname_r(const char *name, struct hostent *hp, char *buf, size_t buflen, int *herr)"
         "NULL"
         "netdb.h"
         EVENT__HAVE_GETHOSTBYNAME_R_5_ARG)
 
-    CHECK_PROTOTYPE_DEFINITION(gethostbyname_r 
+    CHECK_PROTOTYPE_DEFINITION(gethostbyname_r
         "int gethostbyname_r(const char *name, struct hostent *hp, char *buf, size_t buflen, struct hostent **result, int *herr)"
         "0"
         "netdb.h"
@@ -487,16 +489,11 @@ set(HDR_PRIVATE
     defer-internal.h
     epolltable-internal.h
     evbuffer-internal.h
-    include/evdns.h
     event-internal.h
-    include/event.h
-    include/evhttp.h
     evmap-internal.h
     evrpc-internal.h
-    include/evrpc.h
     evsignal-internal.h
     evthread-internal.h
-    include/evutil.h
     ht-internal.h
     http-internal.h
     iocp-internal.h
@@ -510,7 +507,15 @@ set(HDR_PRIVATE
     evconfig-private.h
     compat/sys/queue.h
     )
-    
+
+set(HDR_COMPAT
+    include/evdns.h
+    include/evrpc.h
+    include/event.h
+    include/evhttp.h
+    include/evutil.h
+    )
+
 set(HDR_PUBLIC
     include/event2/buffer.h
     include/event2/bufferevent.h
@@ -540,21 +545,21 @@ set(HDR_PUBLIC
     )
 
 set(SRC_CORE
-    buffer.c 
-    bufferevent.c 
-    bufferevent_filter.c 
-    bufferevent_pair.c 
-    bufferevent_ratelim.c 
-    bufferevent_sock.c 
-    event.c 
-    evmap.c 
-    evthread.c 
-    evutil.c 
+    buffer.c
+    bufferevent.c
+    bufferevent_filter.c
+    bufferevent_pair.c
+    bufferevent_ratelim.c
+    bufferevent_sock.c
+    event.c
+    evmap.c
+    evthread.c
+    evutil.c
     evutil_rand.c
     evutil_time.c
-    listener.c 
-    log.c 
-    signal.c 
+    listener.c
+    log.c
+    signal.c
     strlcpy.c
     )
 
@@ -620,9 +625,9 @@ if (NOT EVENT__DISABLE_TESTS)
 endif()
 
 set(SRC_EXTRA
-    event_tagging.c 
-    http.c 
-    evdns.c 
+    event_tagging.c
+    http.c
+    evdns.c
     evrpc.c
     )
 
@@ -635,14 +640,14 @@ include_directories(BEFORE ${PROJECT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include)
 
 if(WIN32)
-    list(APPEND SRC_CORE 
-        buffer_iocp.c 
+    list(APPEND SRC_CORE
+        buffer_iocp.c
         bufferevent_async.c
-        event_iocp.c 
-        evthread_win32.c 
-        win32select.c        
+        event_iocp.c
+        evthread_win32.c
+        win32select.c
         )
-    
+
     list(APPEND HDR_PRIVATE WIN32-Code/getopt.h)
 
     set(EVENT__DNS_USE_FTIME_FOR_ID 1)
@@ -656,6 +661,7 @@ if (UNIX)
 endif()
 
 source_group("Headers Private"  FILES ${HDR_PRIVATE})
+source_group("Header Compat"    FILES ${HDR_COMPAT})
 source_group("Headers Public"   FILES ${HDR_PUBLIC})
 source_group("Source Core"      FILES ${SRC_CORE})
 source_group("Source Extra"     FILES ${SRC_EXTRA})
@@ -667,7 +673,7 @@ include_directories(BEFORE ${CMAKE_CURRENT_BINARY_DIR}/include)
 if (EVENT__BUILD_SHARED_LIBRARIES)
   set(EVENT__LIBRARY_TYPE SHARED)
 
-  if (CMAKE_COMPILER_IS_GNUC)
+  if (CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
   elseif ("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
@@ -695,12 +701,14 @@ configure_file(
 # TODO: Add dynamic versions of the libraries as well.
 add_library(event_core ${EVENT__LIBRARY_TYPE}
     ${HDR_PRIVATE}
+    ${HDR_COMPAT}
     ${HDR_PUBLIC}
     ${SRC_CORE}
     )
 
 add_library(event_extra ${EVENT__LIBRARY_TYPE}
     ${HDR_PRIVATE}
+    ${HDR_COMPAT}
     ${HDR_PUBLIC}
     ${SRC_CORE}
     ${SRC_EXTRA}
@@ -711,12 +719,26 @@ add_library(event_extra ${EVENT__LIBRARY_TYPE}
 # go away in a future version of Libevent.
 add_library(event ${EVENT__LIBRARY_TYPE}
     ${HDR_PRIVATE}
+    ${HDR_COMPAT}
     ${HDR_PUBLIC}
     ${SRC_CORE}
     ${SRC_EXTRA}
     )
 
 if (EVENT__BUILD_SHARED_LIBRARIES)
+endif (EVENT__BUILD_SHARED_LIBRARIES)
+
+if (EVENT__BUILD_SHARED_LIBRARIES)
+    # Prepare static library to be linked to tests that need hidden symbols
+    add_library(event_extra_static STATIC
+        ${HDR_PRIVATE}
+        ${HDR_COMPAT}
+        ${HDR_PUBLIC}
+        ${SRC_CORE}
+        ${SRC_EXTRA}
+        )
+    set(EVENT_EXTRA_FOR_TEST event_extra_static)
+
    target_link_libraries(event_core ${OPENSSL_LIBRARIES}
                                     ${CMAKE_THREAD_LIBS_INIT}
                                     ${LIB_PLATFORM})
@@ -733,6 +755,8 @@ if (EVENT__BUILD_SHARED_LIBRARIES)
   set_target_properties(event_core PROPERTIES SOVERSION ${EVENT_ABI_LIBVERSION})
   set_target_properties(event_extra PROPERTIES SOVERSION ${EVENT_ABI_LIBVERSION})
 
+else (EVENT__BUILD_SHARED_LIBRARIES)
+    set(EVENT_EXTRA_FOR_TEST event_extra)
 endif (EVENT__BUILD_SHARED_LIBRARIES)
 
 #
@@ -784,28 +808,32 @@ endif()
 
 if (NOT EVENT__DISABLE_TESTS)
 
-    # (We require python to generate the regress tests)
-    find_package(PythonInterp 2.4)
-
     #
     # Generate Regress tests.
     #
     if (NOT EVENT__DISABLE_REGRESS)
-        if (PYTHONINTERP_FOUND)
+
+        # (We require python to generate the regress tests)
+        find_package(PythonInterp)
+        if (PYTHONINTERP_FOUND AND PYTHON_VERSION_STRING VERSION_LESS "3.0.0")
+            set(__FOUND_USABLE_PYTHON 1)
+        endif()
+
+        if (__FOUND_USABLE_PYTHON)
             message("Generating regress tests...")
             add_definitions(-DTINYTEST_LOCAL)
             add_custom_command(
-                OUTPUT 
-                    ${CMAKE_CURRENT_SOURCE_DIR}/test/regress.gen.c 
+                OUTPUT
+                    ${CMAKE_CURRENT_SOURCE_DIR}/test/regress.gen.c
                     ${CMAKE_CURRENT_SOURCE_DIR}/test/regress.gen.h
-                DEPENDS 
+                DEPENDS
                     event_rpcgen.py
-                    test/regress.rpc 
-                COMMAND ${PYTHON_EXECUTABLE} ../event_rpcgen.py regress.rpc 
+                    test/regress.rpc
+                COMMAND ${PYTHON_EXECUTABLE} ../event_rpcgen.py regress.rpc
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test
                 )
 
-            list(APPEND SRC_REGRESS 
+            list(APPEND SRC_REGRESS
                 test/regress.c
                 test/regress.gen.c
                 test/regress.gen.h
@@ -814,14 +842,14 @@ if (NOT EVENT__DISABLE_TESTS)
                 test/regress_dns.c
                 test/regress_et.c
                 test/regress_finalize.c
-                test/regress_http.c 
-                test/regress_listener.c 
+                test/regress_http.c
+                test/regress_listener.c
                 test/regress_main.c
                 test/regress_minheap.c
                 test/regress_rpc.c
                 test/regress_testutils.c
                 test/regress_testutils.h
-                test/regress_util.c 
+                test/regress_util.c
                 test/tinytest.c
                 ${SRC_CORE}
                 ${SRC_EXTRA}
@@ -854,7 +882,7 @@ if (NOT EVENT__DISABLE_TESTS)
 
             target_link_libraries(regress ${LIB_APPS} ${LIB_PLATFORM})
         else()
-            message(WARNING "Python not found, cannot generate regress tests!")
+            message(WARNING "No suitable Python interpreter found, cannot generate regress tests!")
         endif()
     endif()
 
@@ -868,13 +896,13 @@ if (NOT EVENT__DISABLE_TESTS)
                     test-time
                     test-weof)
 
-    set(ALL_TESTPROGS ${TESTPROGS} test-dumpevents test-ratelim) 
+    set(ALL_TESTPROGS ${TESTPROGS} test-dumpevents test-ratelim)
 
     # Create test program executables.
     foreach (TESTPROG ${ALL_TESTPROGS})
         add_executable(${TESTPROG} test/${TESTPROG}.c)
-        target_link_libraries(${TESTPROG} event_extra ${LIB_PLATFORM})
-        add_dependencies(${TESTPROG} event_extra)
+        target_link_libraries(${TESTPROG} ${EVENT_EXTRA_FOR_TEST} ${LIB_PLATFORM})
+        add_dependencies(${TESTPROG} ${EVENT_EXTRA_FOR_TEST})
     endforeach()
 
     #
@@ -934,7 +962,7 @@ if (NOT EVENT__DISABLE_TESTS)
         endforeach()
 
         # Dump events test.
-        if (PYTHONINTERP_FOUND)
+        if (__FOUND_USABLE_PYTHON)
             set(TEST_NAME test-dumpevents__${BACKEND_TEST_NAME})
             add_test(${TEST_NAME} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test-dumpevents | ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/check-dumpevents.py)
             set_tests_properties(${TEST_NAME} PROPERTIES ENVIRONMENT "${ENV_VARS}")
@@ -946,7 +974,7 @@ if (NOT EVENT__DISABLE_TESTS)
         endif()
 
         # Regress tests.
-        if (NOT EVENT__DISABLE_REGRESS AND PYTHONINTERP_FOUND)
+        if (NOT EVENT__DISABLE_REGRESS AND __FOUND_USABLE_PYTHON)
             set(TEST_NAME regress__${BACKEND_TEST_NAME})
             add_test(${TEST_NAME} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/regress)
             set_tests_properties(${TEST_NAME} PROPERTIES ENVIRONMENT "${ENV_VARS}")
@@ -978,15 +1006,15 @@ if (NOT EVENT__DISABLE_TESTS)
 
     # Connection limit, no group limit.
     add_test(test-ratelim__con_lim ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test-ratelim -c 1000 -n 30 -t 100 --check-connlimit 50 --check-stddev 50)
-    
+
     # Connection limit and group limit.
     add_test(test-ratelim__group_con_lim ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test-ratelim -c 1000 -g 30000 -n 30 -t 100 --check-grouplimit 1000 --check-connlimit 50 --check-stddev 50)
-    
+
     # Connection limit and group limit with independent drain.
     add_test(test-ratelim__group_con_lim_drain ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test-ratelim -c 1000 -g 35000 -n 30 -t 100 -G 500 --check-grouplimit 1000 --check-connlimit 50 --check-stddev 50)
 
     # Add a "make verify" target, same as for autoconf.
-    # (Important! This will unset all EVENT_NO* environment variables. 
+    # (Important! This will unset all EVENT_NO* environment variables.
     #  If they are set in the shell the tests are running using simply "ctest" or "make test" will fail)
     if (WIN32)
         # Windows doesn't have "unset". But you can use "set VAR=" instead.
@@ -1030,7 +1058,7 @@ if (NOT EVENT__DISABLE_TESTS)
                         DEPENDS event ${ALL_TESTPROGS})
     endif()
 
-    if (NOT EVENT__DISABLE_REGRESS)
+    if (NOT EVENT__DISABLE_REGRESS AND __FOUND_USABLE_PYTHON)
         add_dependencies(verify regress)
     endif()
 
@@ -1080,33 +1108,33 @@ export(TARGETS event event_extra event_core
 export(PACKAGE libevent)
 
 # Generate the config file for the build-tree.
-set(EVENT__INCLUDE_DIRS 
+set(EVENT__INCLUDE_DIRS
     "${PROJECT_SOURCE_DIR}/include"
     "${PROJECT_BINARY_DIR}/include")
 set(LIBEVENT_INCLUDE_DIRS ${EVENT__INCLUDE_DIRS} CACHE PATH "Libevent include directories")
-configure_file(${PROJECT_SOURCE_DIR}/cmake/LibeventConfig.cmake.in
-                ${PROJECT_BINARY_DIR}/LibeventConfig.cmake 
+configure_file(${PROJECT_SOURCE_DIR}/cmake/LibeventConfigBuildTree.cmake.in
+                ${PROJECT_BINARY_DIR}/LibeventConfig.cmake
                 @ONLY)
 
 # Generate the config file for the installation tree.
-file(RELATIVE_PATH 
-    REL_INCLUDE_DIR 
+file(RELATIVE_PATH
+    REL_INCLUDE_DIR
     "${EVENT_INSTALL_CMAKE_DIR}"
     "${EVENT_INSTALL_INCLUDE_DIR}") # Calculate the relative directory from the Cmake dir.
 
-# Note the EVENT_CMAKE_DIR is defined in LibeventConfig.cmake.in, 
+# Note the EVENT_CMAKE_DIR is defined in LibeventConfig.cmake.in,
 # we escape it here so it's evaluated when it is included instead
-# so that the include dirs are givenrelative to where the 
+# so that the include dirs are givenrelative to where the
 # config file is located.
-set(EVENT__INCLUDE_DIRS 
+set(EVENT__INCLUDE_DIRS
     "\${EVENT_CMAKE_DIR}/${REL_INCLUDE_DIR}")
 configure_file(${PROJECT_SOURCE_DIR}/cmake/LibeventConfig.cmake.in
-                ${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/LibeventConfig.cmake 
+                ${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/LibeventConfig.cmake
                 @ONLY)
 
 # Generate version info for both build-tree and install-tree.
 configure_file(${PROJECT_SOURCE_DIR}/cmake/LibeventConfigVersion.cmake.in
-                ${PROJECT_BINARY_DIR}/LibeventConfigVersion.cmake 
+                ${PROJECT_BINARY_DIR}/LibeventConfigVersion.cmake
                 @ONLY)
 
 # Define the public headers.
@@ -1122,6 +1150,10 @@ install(TARGETS event event_core event_extra
         LIBRARY DESTINATION "${EVENT_INSTALL_LIB_DIR}" COMPONENT lib
         ARCHIVE DESTINATION "${EVENT_INSTALL_LIB_DIR}" COMPONENT lib
         PUBLIC_HEADER DESTINATION "${EVENT_INSTALL_INCLUDE_DIR}/event2" COMPONENT dev)
+# Install compat headers
+install(FILES ${HDR_COMPAT}
+    DESTINATION "${EVENT_INSTALL_INCLUDE_DIR}"
+    COMPONENT dev)
 
 # Install the configs.
 install(FILES

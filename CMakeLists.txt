@@ -770,6 +770,7 @@ if (NOT EVENT__DISABLE_SAMPLES)
         hello-world
         signal-test
         http-server
+        http-connect
         time-test)
 
     if (NOT EVENT__DISABLE_OPENSSL AND OPENSSL_LIBRARIES)
@@ -978,6 +979,9 @@ if (NOT EVENT__DISABLE_TESTS)
             set(TEST_NAME regress__${BACKEND_TEST_NAME})
             add_test(${TEST_NAME} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/regress)
             set_tests_properties(${TEST_NAME} PROPERTIES ENVIRONMENT "${ENV_VARS}")
+
+            add_test(${TEST_NAME}_debug ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/regress)
+            set_tests_properties(${TEST_NAME}_debug PROPERTIES ENVIRONMENT "${ENV_VARS};EVENT_DEBUG_MODE=1")
         endif()
     endmacro()
 

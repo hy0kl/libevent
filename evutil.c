@@ -313,7 +313,7 @@ evutil_make_socket_nonblocking(evutil_socket_t fd)
 {
 #ifdef _WIN32
 	{
-		u_long nonblocking = 1;
+		unsigned long nonblocking = 1;
 		if (ioctlsocket(fd, FIONBIO, &nonblocking) == SOCKET_ERROR) {
 			event_sock_warn(fd, "fcntl(%d, F_GETFL)", (int)fd);
 			return -1;
@@ -358,7 +358,7 @@ evutil_fast_socket_nonblocking(evutil_socket_t fd)
 int
 evutil_make_listen_socket_reuseable(evutil_socket_t sock)
 {
-#ifndef _WIN32
+#if defined(SO_REUSEADDR) && !defined(_WIN32)
 	int one = 1;
 	/* REUSEADDR on Unix means, "don't hang on to this address after the
 	 * listener is closed."  On Windows, though, it means "don't keep other
@@ -523,7 +523,7 @@ evutil_socket_geterror(evutil_socket_t sock)
 /* XXX we should use an enum here. */
 /* 2 for connection refused, 1 for connected, 0 for not yet, -1 for error. */
 int
-evutil_socket_connect_(evutil_socket_t *fd_ptr, struct sockaddr *sa, int socklen)
+evutil_socket_connect_(evutil_socket_t *fd_ptr, const struct sockaddr *sa, int socklen)
 {
 	int made_fd = 0;
 
@@ -1162,7 +1162,7 @@ addrinfo_from_hostent(const struct hostent *ent,
 		sin6.sin6_family = AF_INET6;
 		sin6.sin6_port = htons(port);
 		sa = (struct sockaddr *)&sin6;
-		socklen = sizeof(struct sockaddr_in);
+		socklen = sizeof(struct sockaddr_in6);
 		addrp = &sin6.sin6_addr;
 		if (ent->h_length != sizeof(sin6.sin6_addr)) {
 			event_warnx("Weird h_length from gethostbyname");

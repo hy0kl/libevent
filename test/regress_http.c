@@ -84,6 +84,7 @@ static char const BASIC_REQUEST_BODY[] = "This is funny";
 IMPL_HTTP_REQUEST_ERROR_CB(cancel, EVREQ_HTTP_REQUEST_CANCEL)
 
 static void http_basic_cb(struct evhttp_request *req, void *arg);
+static void http_large_cb(struct evhttp_request *req, void *arg);
 static void http_chunked_cb(struct evhttp_request *req, void *arg);
 static void http_post_cb(struct evhttp_request *req, void *arg);
 static void http_put_cb(struct evhttp_request *req, void *arg);
@@ -133,6 +134,7 @@ http_setup(ev_uint16_t *pport, struct event_base *base, int ipv6)
 
 	/* Register a callback for certain types of requests */
 	evhttp_set_cb(myhttp, "/test", http_basic_cb, base);
+	evhttp_set_cb(myhttp, "/large", http_large_cb, base);
 	evhttp_set_cb(myhttp, "/chunked", http_chunked_cb, base);
 	evhttp_set_cb(myhttp, "/streamed", http_chunked_cb, base);
 	evhttp_set_cb(myhttp, "/postit", http_post_cb, base);
@@ -151,7 +153,7 @@ http_setup(ev_uint16_t *pport, struct event_base *base, int ipv6)
 #endif
 
 static evutil_socket_t
-http_connect(const char *address, u_short port)
+http_connect(const char *address, unsigned short port)
 {
 	/* Stupid code for connecting */
 	struct evutil_addrinfo ai, *aitop;
@@ -326,6 +328,19 @@ http_basic_cb(struct evhttp_request *req, void *arg)
 	    !empty ? evb : NULL);
 
 end:
+	evbuffer_free(evb);
+}
+
+static void
+http_large_cb(struct evhttp_request *req, void *arg)
+{
+	struct evbuffer *evb = evbuffer_new();
+	int i;
+
+	for (i = 0; i < 1<<20; ++i) {
+		evbuffer_add_printf(evb, BASIC_REQUEST_BODY);
+	}
+	evhttp_send_reply(req, HTTP_OK, "Everything is fine", evb);
 	evbuffer_free(evb);
 }
 
@@ -956,6 +971,7 @@ http_allowed_methods_test(void *arg)
 		evutil_closesocket(fd3);
 }
 
+static void http_request_no_action_done(struct evhttp_request *, void *);
 static void http_request_done(struct evhttp_request *, void *);
 static void http_request_empty_done(struct evhttp_request *, void *);
 
@@ -1060,8 +1076,8 @@ http_persist_connection_test(void *arg)
 }
 
 static struct regress_dns_server_table search_table[] = {
-	{ "localhost", "A", "127.0.0.1", 0 },
-	{ NULL, NULL, NULL, 0 }
+	{ "localhost", "A", "127.0.0.1", 0, 0 },
+	{ NULL, NULL, NULL, 0, 0 }
 };
 
 static void
@@ -1317,6 +1333,13 @@ http_cancel_test(void *arg)
 		evhttp_connection_free(evcon);
 	if (http)
 		evhttp_free(http);
+}
+
+static void
+http_request_no_action_done(struct evhttp_request *req, void *arg)
+{
+	EVUTIL_ASSERT(exit_base);
+	event_base_loopexit(exit_base, NULL);
 }
 
 static void
@@ -3326,7 +3349,7 @@ http_make_web_server(evutil_socket_t fd, short what, void *arg)
 }
 
 static void
-http_connection_retry_test(void *arg)
+http_connection_retry_test_impl(void *arg, const char *addr, struct evdns_base *dns_base)
 {
 	struct basic_test_data *data = arg;
 	ev_uint16_t port = 0;
@@ -3342,8 +3365,10 @@ http_connection_retry_test(void *arg)
 	evhttp_free(http);
 	http = NULL;
 
-	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
+	evcon = evhttp_connection_base_new(data->base, dns_base, addr, port);
 	tt_assert(evcon);
+	if (dns_base)
+		tt_assert(!evhttp_connection_set_flags(evcon, EVHTTP_CON_REUSE_CONNECTED_ADDR));
 
 	evhttp_connection_set_timeout(evcon, 1);
 	/* also bind to local host */
@@ -3377,6 +3402,9 @@ http_connection_retry_test(void *arg)
 	 * now test the same but with retries
 	 */
 	test_ok = 0;
+	/** Shutdown dns server, to test conn_address reusing */
+	if (dns_base)
+		regress_clean_dnsserver();
 
 	{
 		const struct timeval tv_timeout = { 0, 500000 };
@@ -3447,6 +3475,37 @@ http_connection_retry_test(void *arg)
 		evhttp_connection_free(evcon);
 	if (http)
 		evhttp_free(http);
+}
+
+static void
+http_connection_retry_conn_address_test(void *arg)
+{
+	struct basic_test_data *data = arg;
+	ev_uint16_t portnum = 0;
+	struct evdns_base *dns_base = NULL;
+	char address[64];
+
+	tt_assert(regress_dnsserver(data->base, &portnum, search_table));
+	dns_base = evdns_base_new(data->base, 0/* init name servers */);
+	tt_assert(dns_base);
+
+	/* Add ourself as the only nameserver, and make sure we really are
+	 * the only nameserver. */
+	evutil_snprintf(address, sizeof(address), "127.0.0.1:%d", portnum);
+	evdns_base_nameserver_ip_add(dns_base, address);
+
+	http_connection_retry_test_impl(arg, "localhost", dns_base);
+
+ end:
+	if (dns_base)
+		evdns_base_free(dns_base, 0);
+	/** dnsserver will be cleaned in http_connection_retry_test_impl() */
+}
+
+static void
+http_connection_retry_test(void *arg)
+{
+	return http_connection_retry_test_impl(arg, "127.0.0.1", NULL);
 }
 
 static void
@@ -3688,6 +3747,7 @@ struct terminate_state {
 	struct bufferevent *bev;
 	evutil_socket_t fd;
 	int gotclosecb: 1;
+	int oneshot: 1;
 };
 
 static void
@@ -3695,7 +3755,10 @@ terminate_chunked_trickle_cb(evutil_socket_t fd, short events, void *arg)
 {
 	struct terminate_state *state = arg;
 	struct evbuffer *evb;
-	struct timeval tv;
+
+	if (!state->req) {
+		return;
+	}
 
 	if (evhttp_request_get_connection(state->req) == NULL) {
 		test_ok = 1;
@@ -3709,11 +3772,14 @@ terminate_chunked_trickle_cb(evutil_socket_t fd, short events, void *arg)
 	evhttp_send_reply_chunk(state->req, evb);
 	evbuffer_free(evb);
 
-	tv.tv_sec = 0;
-	tv.tv_usec = 3000;
-	EVUTIL_ASSERT(state);
-	EVUTIL_ASSERT(state->base);
-	event_base_once(state->base, -1, EV_TIMEOUT, terminate_chunked_trickle_cb, arg, &tv);
+	if (!state->oneshot) {
+		struct timeval tv;
+		tv.tv_sec = 0;
+		tv.tv_usec = 3000;
+		EVUTIL_ASSERT(state);
+		EVUTIL_ASSERT(state->base);
+		event_base_once(state->base, -1, EV_TIMEOUT, terminate_chunked_trickle_cb, arg, &tv);
+	}
 }
 
 static void
@@ -3721,6 +3787,13 @@ terminate_chunked_close_cb(struct evhttp_connection *evcon, void *arg)
 {
 	struct terminate_state *state = arg;
 	state->gotclosecb = 1;
+
+	/** TODO: though we can do this unconditionally */
+	if (state->oneshot) {
+		evhttp_request_free(state->req);
+		state->req = NULL;
+		event_base_loopexit(state->base,NULL);
+	}
 }
 
 static void
@@ -3760,7 +3833,7 @@ terminate_readcb(struct bufferevent *bev, void *arg)
 
 
 static void
-http_terminate_chunked_test(void *arg)
+http_terminate_chunked_test_impl(void *arg, int oneshot)
 {
 	struct basic_test_data *data = arg;
 	struct bufferevent *bev = NULL;
@@ -3789,6 +3862,7 @@ http_terminate_chunked_test(void *arg)
 	terminate_state.fd = fd;
 	terminate_state.bev = bev;
 	terminate_state.gotclosecb = 0;
+	terminate_state.oneshot = oneshot;
 
 	/* first half of the http request */
 	http_request =
@@ -3812,10 +3886,20 @@ http_terminate_chunked_test(void *arg)
 	if (http)
 		evhttp_free(http);
 }
+static void
+http_terminate_chunked_test(void *arg)
+{
+	http_terminate_chunked_test_impl(arg, 0);
+}
+static void
+http_terminate_chunked_oneshot_test(void *arg)
+{
+	http_terminate_chunked_test_impl(arg, 1);
+}
 
 static struct regress_dns_server_table ipv6_search_table[] = {
-	{ "localhost", "AAAA", "::1", 0 },
-	{ NULL, NULL, NULL, 0 }
+	{ "localhost", "AAAA", "::1", 0, 0 },
+	{ NULL, NULL, NULL, 0, 0 }
 };
 
 static void
@@ -3929,6 +4013,91 @@ http_set_family_ipv6_test(void *arg)
 	http_ipv6_for_domain_test_impl(arg, AF_INET6);
 }
 
+static void
+http_write_during_read(evutil_socket_t fd, short what, void *arg)
+{
+	struct bufferevent *bev = arg;
+	struct timeval tv;
+
+	bufferevent_write(bev, "foobar", strlen("foobar"));
+
+	evutil_timerclear(&tv);
+	tv.tv_sec = 1;
+	event_base_loopexit(exit_base, &tv);
+}
+static void
+http_write_during_read_test(void *arg)
+{
+	struct basic_test_data *data = arg;
+	ev_uint16_t port = 0;
+	struct bufferevent *bev = NULL;
+	struct timeval tv;
+	int fd;
+	const char *http_request;
+
+	test_ok = 0;
+	exit_base = data->base;
+
+	http = http_setup(&port, data->base, 0);
+
+	fd = http_connect("127.0.0.1", port);
+	bev = bufferevent_socket_new(data->base, fd, 0);
+	bufferevent_setcb(bev, NULL, NULL, NULL, data->base);
+	bufferevent_disable(bev, EV_READ);
+
+	http_request =
+	    "GET /large HTTP/1.1\r\n"
+	    "Host: somehost\r\n"
+	    "\r\n";
+
+	bufferevent_write(bev, http_request, strlen(http_request));
+	evutil_timerclear(&tv);
+	tv.tv_usec = 10000;
+	event_base_once(data->base, -1, EV_TIMEOUT, http_write_during_read, bev, &tv);
+
+	event_base_dispatch(data->base);
+
+	if (bev)
+		bufferevent_free(bev);
+	if (http)
+		evhttp_free(http);
+}
+
+static void
+http_request_own_test(void *arg)
+{
+	struct basic_test_data *data = arg;
+	ev_uint16_t port = 0;
+	struct evhttp_connection *evcon = NULL;
+	struct evhttp_request *req = NULL;
+
+	test_ok = 0;
+	exit_base = data->base;
+
+	http = http_setup(&port, data->base, 0);
+	evhttp_free(http);
+
+	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
+	tt_assert(evcon);
+
+	req = evhttp_request_new(http_request_no_action_done, NULL);
+
+	if (evhttp_make_request(evcon, req, EVHTTP_REQ_GET, "/test") == -1) {
+		tt_abort_msg("Couldn't make request");
+	}
+	evhttp_request_own(req);
+
+	event_base_dispatch(data->base);
+
+ end:
+	if (evcon)
+		evhttp_connection_free(evcon);
+	if (req)
+		evhttp_request_free(req);
+
+	test_ok = 1;
+}
+
 #define HTTP_LEGACY(name)						\
 	{ #name, run_legacy_test_fn, TT_ISOLATED|TT_LEGACY, &legacy_setup, \
 		    http_##name##_test }
@@ -3962,6 +4131,7 @@ struct testcase_t http_testcases[] = {
 	HTTP(incomplete),
 	HTTP(incomplete_timeout),
 	HTTP(terminate_chunked),
+	HTTP(terminate_chunked_oneshot),
 	HTTP(on_complete),
 
 	HTTP(highport),
@@ -3976,6 +4146,8 @@ struct testcase_t http_testcases[] = {
 
 	HTTP(connection_fail),
 	{ "connection_retry", http_connection_retry_test, TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
+	{ "connection_retry_conn_address", http_connection_retry_conn_address_test,
+	  TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
 
 	HTTP(data_length_constraints),
 
@@ -3985,6 +4157,9 @@ struct testcase_t http_testcases[] = {
 	HTTP(set_family),
 	HTTP(set_family_ipv4),
 	HTTP(set_family_ipv6),
+
+	HTTP(write_during_read),
+	HTTP(request_own),
 
 	END_OF_TESTCASES
 };

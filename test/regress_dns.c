@@ -72,6 +72,8 @@
 #include "regress.h"
 #include "regress_testutils.h"
 
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+
 static int dns_ok = 0;
 static int dns_got_cancel = 0;
 static int dns_err = 0;
@@ -511,25 +513,25 @@ generic_dns_callback(int result, char type, int count, int ttl, void *addresses,
 }
 
 static struct regress_dns_server_table search_table[] = {
-	{ "host.a.example.com", "err", "3", 0 },
-	{ "host.b.example.com", "err", "3", 0 },
-	{ "host.c.example.com", "A", "11.22.33.44", 0 },
-	{ "host2.a.example.com", "err", "3", 0 },
-	{ "host2.b.example.com", "A", "200.100.0.100", 0 },
-	{ "host2.c.example.com", "err", "3", 0 },
-	{ "hostn.a.example.com", "errsoa", "0", 0 },
-	{ "hostn.b.example.com", "errsoa", "3", 0 },
-	{ "hostn.c.example.com", "err", "0", 0 },
+	{ "host.a.example.com", "err", "3", 0, 0 },
+	{ "host.b.example.com", "err", "3", 0, 0 },
+	{ "host.c.example.com", "A", "11.22.33.44", 0, 0 },
+	{ "host2.a.example.com", "err", "3", 0, 0 },
+	{ "host2.b.example.com", "A", "200.100.0.100", 0, 0 },
+	{ "host2.c.example.com", "err", "3", 0, 0 },
+	{ "hostn.a.example.com", "errsoa", "0", 0, 0 },
+	{ "hostn.b.example.com", "errsoa", "3", 0, 0 },
+	{ "hostn.c.example.com", "err", "0", 0, 0 },
 
-	{ "host", "err", "3", 0 },
-	{ "host2", "err", "3", 0 },
-	{ "*", "err", "3", 0 },
-	{ NULL, NULL, NULL, 0 }
+	{ "host", "err", "3", 0, 0 },
+	{ "host2", "err", "3", 0, 0 },
+	{ "*", "err", "3", 0, 0 },
+	{ NULL, NULL, NULL, 0, 0 }
 };
-
 static void
-dns_search_test(void *arg)
+dns_search_test_impl(void *arg, int lower)
 {
+	struct regress_dns_server_table table[ARRAY_SIZE(search_table)];
 	struct basic_test_data *data = arg;
 	struct event_base *base = data->base;
 	struct evdns_base *dns = NULL;
@@ -537,8 +539,14 @@ dns_search_test(void *arg)
 	char buf[64];
 
 	struct generic_dns_callback_result r[8];
+	size_t i;
 
-	tt_assert(regress_dnsserver(base, &portnum, search_table));
+	for (i = 0; i < ARRAY_SIZE(table); ++i) {
+		table[i] = search_table[i];
+		table[i].lower = lower;
+	}
+
+	tt_assert(regress_dnsserver(base, &portnum, table));
 	evutil_snprintf(buf, sizeof(buf), "127.0.0.1:%d", (int)portnum);
 
 	dns = evdns_base_new(base, 0);
@@ -548,7 +556,7 @@ dns_search_test(void *arg)
 	evdns_base_search_add(dns, "b.example.com");
 	evdns_base_search_add(dns, "c.example.com");
 
-	n_replies_left = sizeof(r)/sizeof(r[0]);
+	n_replies_left = ARRAY_SIZE(r);
 	exit_base = base;
 
 	evdns_base_resolve_ipv4(dns, "host", 0, generic_dns_callback, &r[0]);
@@ -583,6 +591,16 @@ end:
 		evdns_base_free(dns, 0);
 
 	regress_clean_dnsserver();
+}
+static void
+dns_search_test(void *arg)
+{
+	return dns_search_test_impl(arg, 0);
+}
+static void
+dns_search_lower_test(void *arg)
+{
+	return dns_search_test_impl(arg, 1);
 }
 
 static int request_count = 0;
@@ -776,13 +794,13 @@ static struct regress_dns_server_table internal_error_table[] = {
 
 	   XXXX we should reissue under a much wider set of circumstances!
 	 */
-	{ "foof.example.com", "err", "4", 0 },
-	{ NULL, NULL, NULL, 0 }
+	{ "foof.example.com", "err", "4", 0, 0 },
+	{ NULL, NULL, NULL, 0, 0 }
 };
 
 static struct regress_dns_server_table reissue_table[] = {
-	{ "foof.example.com", "A", "240.15.240.15", 0 },
-	{ NULL, NULL, NULL, 0 }
+	{ "foof.example.com", "A", "240.15.240.15", 0, 0 },
+	{ NULL, NULL, NULL, 0, 0 }
 };
 
 static void
@@ -1672,7 +1690,6 @@ test_getaddrinfo_async(void *arg)
 end:
 	if (local_outcome.ai)
 		evutil_freeaddrinfo(local_outcome.ai);
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 	for (i=0;i<(int)ARRAY_SIZE(a_out);++i) {
 		if (a_out[i].ai)
 			evutil_freeaddrinfo(a_out[i].ai);
@@ -2010,6 +2027,7 @@ struct testcase_t dns_testcases[] = {
 	DNS_LEGACY(gethostbyaddr, TT_FORK|TT_NEED_BASE|TT_NEED_DNS|TT_OFF_BY_DEFAULT),
 	{ "resolve_reverse", dns_resolve_reverse, TT_FORK|TT_OFF_BY_DEFAULT, NULL, NULL },
 	{ "search", dns_search_test, TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
+	{ "search_lower", dns_search_lower_test, TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 	{ "search_cancel", dns_search_cancel_test,
 	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 	{ "retry", dns_retry_test, TT_FORK|TT_NEED_BASE|TT_NO_LOGS, &basic_setup, NULL },

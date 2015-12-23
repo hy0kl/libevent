@@ -226,16 +226,17 @@ evutil_ersatz_socketpair_(int family, int type, int protocol,
 	struct sockaddr_in connect_addr;
 	ev_socklen_t size;
 	int saved_errno = -1;
-
-	if (protocol
-		|| (family != AF_INET
+	int family_test;
+	
+	family_test = family != AF_INET;
 #ifdef AF_UNIX
-		    && family != AF_UNIX
+	family_test = family_test && (family != AF_UNIX);
 #endif
-		)) {
+	if (protocol || family_test) {
 		EVUTIL_SET_SOCKET_ERROR(ERR(EAFNOSUPPORT));
 		return -1;
 	}
+	
 	if (!fd) {
 		EVUTIL_SET_SOCKET_ERROR(ERR(EINVAL));
 		return -1;
@@ -1708,10 +1709,10 @@ evutil_socket_error_to_string(int errcode)
 		goto done;
 	}
 
-	if (0 != FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM |
+	if (0 != FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM |
 			       FORMAT_MESSAGE_IGNORE_INSERTS |
 			       FORMAT_MESSAGE_ALLOCATE_BUFFER,
-			       NULL, errcode, 0, (LPTSTR)&msg, 0, NULL))
+			       NULL, errcode, 0, (char *)&msg, 0, NULL))
 		chomp (msg);	/* because message has trailing newline */
 	else {
 		size_t len = 50;

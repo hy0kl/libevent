@@ -1192,6 +1192,7 @@ evhttp_connection_free(struct evhttp_connection *evcon)
 	    &evcon->read_more_deferred_cb);
 
 	if (evcon->fd != -1) {
+		bufferevent_disable(evcon->bufev, EV_READ|EV_WRITE);
 		shutdown(evcon->fd, EVUTIL_SHUT_WR);
 		if (!(bufferevent_get_options_(evcon->bufev) & BEV_OPT_CLOSE_ON_FREE)) {
 			evutil_closesocket(evcon->fd);
@@ -2471,9 +2472,9 @@ evhttp_connection_connect_(struct evhttp_connection *evcon)
 	    evcon);
 	if (!evutil_timerisset(&evcon->timeout)) {
 		const struct timeval conn_tv = { HTTP_CONNECT_TIMEOUT, 0 };
-		bufferevent_set_timeouts(evcon->bufev, NULL, &conn_tv);
+		bufferevent_set_timeouts(evcon->bufev, &conn_tv, &conn_tv);
 	} else {
-		bufferevent_set_timeouts(evcon->bufev, NULL, &evcon->timeout);
+		bufferevent_set_timeouts(evcon->bufev, &evcon->timeout, &evcon->timeout);
 	}
 	/* make sure that we get a write callback */
 	bufferevent_enable(evcon->bufev, EV_WRITE);

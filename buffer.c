@@ -1732,7 +1732,11 @@ evbuffer_add(struct evbuffer *buf, const void *data_in, size_t datlen)
 		goto done;
 	}
 
-	chain = buf->last;
+	if (*buf->last_with_datap == NULL) {
+		chain = buf->last;
+	} else {
+		chain = *buf->last_with_datap;
+	}
 
 	/* If there are no chains allocated for this buffer, allocate one
 	 * big enough to hold all the data. */
@@ -1879,7 +1883,7 @@ evbuffer_prepend(struct evbuffer *buf, const void *data, size_t datlen)
 
 	memcpy(tmp->buffer + tmp->misalign, data, datlen);
 	buf->total_len += datlen;
-	buf->n_add_for_cb += (size_t)chain->misalign;
+	buf->n_add_for_cb += datlen;
 
 out:
 	evbuffer_invoke_callbacks_(buf);

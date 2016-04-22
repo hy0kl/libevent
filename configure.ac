@@ -792,7 +792,7 @@ if test x$enable_gcc_warnings != xno && test "$GCC" = "yes"; then
 #error
 #endif])], have_clang=yes, have_clang=no)
 
-  CFLAGS="$CFLAGS -W -Wfloat-equal -Wundef -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings -Wredundant-decls -Wchar-subscripts -Wcomment -Wformat -Wwrite-strings -Wmissing-declarations -Wredundant-decls -Wnested-externs -Wbad-function-cast -Wswitch-enum"
+  CFLAGS="$CFLAGS -W -Wfloat-equal -Wundef -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings -Wredundant-decls -Wchar-subscripts -Wcomment -Wformat -Wwrite-strings -Wmissing-declarations -Wredundant-decls -Wnested-externs -Wbad-function-cast -Wswitch"
   if test x$enable_gcc_warnings = xyes; then
     CFLAGS="$CFLAGS -Werror"
   fi
@@ -915,5 +915,5 @@ AC_SUBST([LIBEVENT_GC_SECTIONS])
 
 AM_CONDITIONAL([INSTALL_LIBEVENT], [test "$enable_libevent_install" = "yes"])
 
-AC_CONFIG_FILES( [libevent.pc libevent_openssl.pc libevent_pthreads.pc] )
+AC_CONFIG_FILES( [libevent.pc libevent_openssl.pc libevent_pthreads.pc libevent_core.pc libevent_extra.pc] )
 AC_OUTPUT(Makefile)

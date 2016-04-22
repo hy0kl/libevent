@@ -42,9 +42,7 @@ TAGS
 tags
 
 # Stuff made by our makefiles
-libevent.pc
-libevent_pthreads.pc
-libevent_openssl.pc
+*.pc
 *.log
 *.trs
 
@@ -67,6 +65,7 @@ libevent_openssl.pc
 /config.status
 /config.sub
 /configure
+/configure.lineno
 /depcomp
 /config.h
 /config.h.in
@@ -126,6 +125,7 @@ libevent_openssl.pc
 /lib/
 /tmp/
 /verify_tests.sh
+/verify_tests.bat
 /event.dir
 /event_core.dir
 /event_extra.dir
